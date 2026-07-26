@@ -11,68 +11,70 @@ app.use(express.urlencoded({ extended: true }));
 let sock;
 
 async function connectToWhatsApp() {
-    try {
-        const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+  try {
+    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
 
-        sock = makeWASocket({
-            auth: state,
-            printQRInTerminal: true,
-            browser: ["Ubuntu", "Chrome", "22.04.4"]
-        });
+    sock = makeWASocket({
+      auth: state,
+      browser: ["Ubuntu", "Chrome", "22.04.4"]
+    });
 
-        sock.ev.on('connection.update', (update) => {
-            const { connection, lastDisconnect, qr } = update;
-            
-            if (qr) {
-                console.log('--- SILAKAN SCAN QR CODE DI BAWAH INI ---');
-                qrcodeTerminal.generate(qr, { small: true });
-            }
+    sock.ev.on('connection.update', (update) => {
+      const { connection, lastDisconnect, qr } = update;
 
-            if (connection === 'close') {
-                const shouldReconnect = (lastDisconnect.error = Boom)?.output?.statusCode !== 401;
-                console.log('Koneksi terputus, mencoba menghubungkan ulang...', shouldReconnect);
-                
-                if (lastDisconnect.error?.output?.statusCode === 401) {
-                    console.log('Sesi kedaluwarsa atau logout. Menghapus folder sesi lama...');
-                    if (fs.existsSync('auth_info_baileys')) {
-                        fs.rmSync('auth_info_baileys', { recursive: true, force: true });
-                    }
-                }
+      // ✅ QR tampil manual di terminal
+      if (qr) {
+        console.log('--- SILAKAN SCAN QR CODE DI BAWAH INI ---');
+        qrcodeTerminal.generate(qr, { small: true });
+      }
 
-                if (shouldReconnect) {
-                    setTimeout(connectToWhatsApp, 3000); // Jeda 3 detik sebelum reconnect
-                }
-            } else if (connection === 'open') {
-                console.log('WhatsApp Berhasil Terhubung!');
-            }
-        });
+      // 🔄 Handle koneksi
+      if (connection === 'close') {
+        const shouldReconnect = (lastDisconnect.error = Boom)?.output?.statusCode !== 401;
+        console.log('Koneksi terputus, mencoba menghubungkan ulang...', shouldReconnect);
 
-        sock.ev.on('creds.update', saveCreds);
-    } catch (error) {
-        console.log('Error saat inisialisasi WA:', error.message);
-    }
+        if (lastDisconnect.error?.output?.statusCode === 401) {
+          console.log('Sesi kedaluwarsa atau logout. Menghapus folder sesi lama...');
+          if (fs.existsSync('auth_info_baileys')) {
+            fs.rmSync('auth_info_baileys', { recursive: true, force: true });
+          }
+        }
+
+        if (shouldReconnect) {
+          setTimeout(connectToWhatsApp, 3000);
+        }
+      } else if (connection === 'open') {
+        console.log('✅ WhatsApp Berhasil Terhubung!');
+      }
+    });
+
+    sock.ev.on('creds.update', saveCreds);
+  } catch (error) {
+    console.log('❌ Error saat inisialisasi WA:', error.message);
+  }
 }
 
 connectToWhatsApp();
 
+// 📨 Endpoint kirim pesan
 app.post('/send-message', async (req, res) => {
-    const phoneNumber = req.body.phone;
-    const message = req.body.message;
+  const phoneNumber = req.body.phone;
+  const message = req.body.message;
 
-    if (!sock) {
-        return res.status(500).json({ status: false, pesan: 'WhatsApp belum siap' });
-    }
+  if (!sock) {
+    return res.status(500).json({ status: false, pesan: 'WhatsApp belum siap' });
+  }
 
-    try {
-        const id = phoneNumber + '@s.whatsapp.net';
-        await sock.sendMessage(id, { text: message });
-        res.json({ status: true, pesan: 'Pesan berhasil dikirim' });
-    } catch (error) {
-        res.status(500).json({ status: false, pesan: error.message });
-    }
+  try {
+    const id = phoneNumber + '@s.whatsapp.net';
+    await sock.sendMessage(id, { text: message });
+    res.json({ status: true, pesan: 'Pesan berhasil dikirim' });
+  } catch (error) {
+    res.status(500).json({ status: false, pesan: error.message });
+  }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Server berjalan di port ${PORT}`);
+  console.log(`🚀 Server berjalan di port ${PORT}`);
 });
