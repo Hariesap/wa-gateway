@@ -9,7 +9,7 @@ const { Boom } = require('@hapi/boom');
 const express = require('express');
 const qrcodeTerminal = require('qrcode-terminal');
 const fs = require('fs');
-const P = require('pino'); // ✅ gunakan pino untuk logger
+const P = require('pino');
 
 const app = express();
 app.use(express.json());
@@ -19,18 +19,19 @@ let sock;
 
 async function connectToWhatsApp() {
   try {
-    // ✅ Pastikan folder sesi tersedia
-    if (!fs.existsSync('auth_info_baileys')) {
-      fs.mkdirSync('auth_info_baileys');
-      console.log('📁 Folder sesi dibuat: auth_info_baileys');
+    // ✅ Gunakan folder sesi di /tmp agar bisa ditulis di Railway
+    const sessionPath = '/tmp/auth_info_baileys';
+    if (!fs.existsSync(sessionPath)) {
+      fs.mkdirSync(sessionPath);
+      console.log('📁 Folder sesi dibuat di /tmp');
     }
 
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+    const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
 
     sock = makeWASocket({
       auth: state,
       browser: ["Ubuntu", "Chrome", "22.04.4"],
-      logger: P({ level: 'debug' }) // aktifkan debug agar log lebih detail
+      logger: P({ level: 'debug' })
     });
 
     sock.ev.on('connection.update', (update) => {
@@ -49,8 +50,8 @@ async function connectToWhatsApp() {
 
         if (reason === DisconnectReason.loggedOut) {
           console.log('Sesi kedaluwarsa atau logout. Menghapus folder sesi lama...');
-          if (fs.existsSync('auth_info_baileys')) {
-            fs.rmSync('auth_info_baileys', { recursive: true, force: true });
+          if (fs.existsSync(sessionPath)) {
+            fs.rmSync(sessionPath, { recursive: true, force: true });
           }
         }
 
@@ -81,7 +82,7 @@ app.post('/send-message', async (req, res) => {
   }
 
   try {
-    const id = phoneNumber.replace(/\D/g, '') + '@s.whatsapp.net'; // pastikan format nomor bersih
+    const id = phoneNumber.replace(/\D/g, '') + '@s.whatsapp.net';
     await sock.sendMessage(id, { text: message });
     res.json({ status: true, pesan: 'Pesan berhasil dikirim ke ' + phoneNumber });
   } catch (error) {
