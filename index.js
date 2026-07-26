@@ -3,6 +3,7 @@ const { Boom } = require('@hapi/boom');
 const express = require('express');
 const qrcodeTerminal = require('qrcode-terminal');
 const fs = require('fs');
+const P = require('pino'); // ✅ gunakan pino untuk logger
 
 const app = express();
 app.use(express.json());
@@ -14,11 +15,11 @@ async function connectToWhatsApp() {
   try {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
 
+    // ✅ gunakan pino logger agar kompatibel dengan Baileys
     sock = makeWASocket({
       auth: state,
       browser: ["Ubuntu", "Chrome", "22.04.4"],
-      // aktifkan log debug kalau perlu
-      logger: { level: 'info' }
+      logger: P({ level: 'info' })
     });
 
     sock.ev.on('connection.update', (update) => {
