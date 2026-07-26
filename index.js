@@ -1,6 +1,7 @@
 const { default: makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const express = require('express');
+const qrcodeTerminal = require('qrcode-terminal'); // Tambahkan ini
 
 const app = express();
 app.use(express.json());
@@ -13,14 +14,21 @@ async function connectToWhatsApp() {
 
     sock = makeWASocket({
         auth: state,
-        printQRInTerminal: true
+        // Hapus printQRInTerminal karena sudah deprecated, kitahandle manual di bawah
     });
 
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
+        
+        // JIKA ADA QR CODE, CETAK LANGSUNG KE LOGS BERBENTUK BARCODE TEXT
         if (qr) {
-            console.log('--- SILAKAN SCAN QR CODE INI DI LOGS RAILWAY ---');
+            console.logger = console.log;
+            qrcodeTerminal.generate(qr, { small: true }, (qrcode) => {
+                console.log(qrcode);
+            });
+            console.log('--- SILAKAN SCAN QR CODE DI ATAS MENGGUNAKAN WHATSAPP ---');
         }
+
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect.error = Boom)?.output?.statusCode !== 401;
             if (shouldReconnect) {
