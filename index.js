@@ -21,10 +21,19 @@ async function connectToWhatsApp() {
   try {
     // ✅ Gunakan folder sesi di /tmp agar bisa ditulis di Railway
     const sessionPath = '/tmp/auth_info_baileys';
-    const sessionExists = fs.existsSync(sessionPath);
+    let sessionExists = fs.existsSync(sessionPath);
+
+    // ✅ Cek apakah folder kosong atau rusak
+    if (sessionExists) {
+      const files = fs.readdirSync(sessionPath);
+      if (files.length === 0) {
+        console.log('⚠️ Folder sesi kosong, QR akan dibuat ulang...');
+        sessionExists = false;
+      }
+    }
 
     if (!sessionExists) {
-      fs.mkdirSync(sessionPath);
+      fs.mkdirSync(sessionPath, { recursive: true });
       console.log('📁 Folder sesi dibuat di /tmp');
       console.log('⚠️ Belum ada sesi login, QR akan muncul setelah koneksi dibuat...');
     } else {
@@ -43,7 +52,7 @@ async function connectToWhatsApp() {
       const { connection, lastDisconnect, qr } = update;
 
       // ✅ QR tampil manual di terminal/log Railway
-      if (qr && !sessionExists) {
+      if (qr) {
         console.log('\n--- SILAKAN SCAN QR CODE DI BAWAH INI ---');
         qrcodeTerminal.generate(qr, { small: true });
       }
@@ -66,6 +75,9 @@ async function connectToWhatsApp() {
         console.log('✅ WhatsApp Berhasil Terhubung!');
       } else if (connection === 'connecting') {
         console.log('🔄 Sedang mencoba menghubungkan ke WhatsApp...');
+      } else if (connection === 'close' && !sessionExists) {
+        console.log('⚠️ Tidak ada sesi valid, QR akan dibuat ulang...');
+        setTimeout(connectToWhatsApp, 2000);
       }
     });
 
