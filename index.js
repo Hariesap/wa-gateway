@@ -1,4 +1,9 @@
-const crypto = require('crypto'); // <-- TAMBAHKAN INI DI SINI
+// ✅ Tambahkan crypto agar Baileys bisa melakukan enkripsi handshake
+const crypto = require('crypto');
+if (!global.crypto) {
+  global.crypto = crypto;
+}
+
 const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const express = require('express');
@@ -16,7 +21,6 @@ async function connectToWhatsApp() {
   try {
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
 
-    // ✅ gunakan pino logger agar kompatibel dengan Baileys
     sock = makeWASocket({
       auth: state,
       browser: ["Ubuntu", "Chrome", "22.04.4"],
@@ -75,6 +79,14 @@ app.post('/send-message', async (req, res) => {
   } catch (error) {
     res.status(500).json({ status: false, pesan: error.message });
   }
+});
+
+// 🧩 Endpoint status koneksi (opsional)
+app.get('/status', (req, res) => {
+  if (!sock) {
+    return res.json({ status: false, pesan: 'Belum terhubung ke WhatsApp' });
+  }
+  res.json({ status: true, pesan: 'WhatsApp sedang terhubung' });
 });
 
 const PORT = process.env.PORT || 3000;
