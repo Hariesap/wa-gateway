@@ -19,18 +19,24 @@ let sock;
 
 async function connectToWhatsApp() {
   try {
+    // ✅ Pastikan folder sesi tersedia
+    if (!fs.existsSync('auth_info_baileys')) {
+      fs.mkdirSync('auth_info_baileys');
+      console.log('📁 Folder sesi dibuat: auth_info_baileys');
+    }
+
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
 
     sock = makeWASocket({
       auth: state,
       browser: ["Ubuntu", "Chrome", "22.04.4"],
-      logger: P({ level: 'info' })
+      logger: P({ level: 'debug' }) // aktifkan debug agar log lebih detail
     });
 
     sock.ev.on('connection.update', (update) => {
       const { connection, lastDisconnect, qr } = update;
 
-      // ✅ QR tampil manual di terminal
+      // ✅ QR tampil manual di terminal/log Railway
       if (qr) {
         console.log('\n--- SILAKAN SCAN QR CODE DI BAWAH INI ---');
         qrcodeTerminal.generate(qr, { small: true });
@@ -52,6 +58,8 @@ async function connectToWhatsApp() {
         setTimeout(connectToWhatsApp, 3000);
       } else if (connection === 'open') {
         console.log('✅ WhatsApp Berhasil Terhubung!');
+      } else if (connection === 'connecting') {
+        console.log('🔄 Sedang mencoba menghubungkan ke WhatsApp...');
       }
     });
 
