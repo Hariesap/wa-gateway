@@ -2,6 +2,7 @@ const { default: makeWASocket, useMultiFileAuthState } = require('@whiskeysocket
 const { Boom } = require('@hapi/boom');
 const express = require('express');
 const qrcodeTerminal = require('qrcode-terminal');
+const fs = require('fs');
 
 const app = express();
 app.use(express.json());
@@ -10,10 +11,12 @@ app.use(express.urlencoded({ extended: true }));
 let sock;
 
 async function connectToWhatsApp() {
+    // Jika ingin mereset total sesi yang error, pastikan folder auth bersih
     const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
 
     sock = makeWASocket({
-        auth: state
+        auth: state,
+        printQRInTerminal: false
     });
 
     sock.ev.on('connection.update', (update) => {
@@ -27,6 +30,15 @@ async function connectToWhatsApp() {
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect.error = Boom)?.output?.statusCode !== 401;
             console.log('Koneksi terputus, mencoba menghubungkan ulang...', shouldReconnect);
+            
+            // Jika error 401 (logged out / unauthorized), hapus folder sesi agar generate QR baru
+            if (lastDisconnect.error?.output?.statusCode === 401) {
+                console.log('Sesi kedaluwarsa atau logout. Menghapus folder sesi lama...');
+                if (fs.existsSync('auth_info_baileys')) {
+                    fs.rmSync('auth_info_baileys', { recursive: true, force: true });
+                }
+            }
+
             if (shouldReconnect) {
                 connectToWhatsApp();
             }
