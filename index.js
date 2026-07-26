@@ -1,7 +1,6 @@
 const { default: makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const express = require('express');
-const qrcode = require('qrcode-terminal');
 
 const app = express();
 app.use(express.json());
@@ -20,11 +19,10 @@ async function connectToWhatsApp() {
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
         if (qr) {
-            console.log('SCAN QR CODE INI DI RENDER LOGS!');
+            console.log('--- SILAKAN SCAN QR CODE INI DI LOGS RAILWAY ---');
         }
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect.error = Boom)?.output?.statusCode !== 401;
-            console.log('Koneksi terputus, mencoba menghubungkan ulang...', shouldReconnect);
             if (shouldReconnect) {
                 connectToWhatsApp();
             }
@@ -38,13 +36,12 @@ async function connectToWhatsApp() {
 
 connectToWhatsApp();
 
-// Endpoint API untuk menerima perintah kirim pesan dari CodeIgniter
 app.post('/send-message', async (req, res) => {
-    const phoneNumber = req.body.phone; // Format: 628xxx
+    const phoneNumber = req.body.phone;
     const message = req.body.message;
 
     if (!sock) {
-        return res.status(500).json({ status: false, pesan: 'WhatsApp belum siap/terhubung' });
+        return res.status(500).json({ status: false, pesan: 'WhatsApp belum siap' });
     }
 
     try {
