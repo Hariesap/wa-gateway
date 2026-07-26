@@ -21,9 +21,14 @@ async function connectToWhatsApp() {
   try {
     // ✅ Gunakan folder sesi di /tmp agar bisa ditulis di Railway
     const sessionPath = '/tmp/auth_info_baileys';
-    if (!fs.existsSync(sessionPath)) {
+    const sessionExists = fs.existsSync(sessionPath);
+
+    if (!sessionExists) {
       fs.mkdirSync(sessionPath);
       console.log('📁 Folder sesi dibuat di /tmp');
+      console.log('⚠️ Belum ada sesi login, QR akan muncul setelah koneksi dibuat...');
+    } else {
+      console.log('✅ Folder sesi ditemukan, mencoba login tanpa QR...');
     }
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
@@ -38,7 +43,7 @@ async function connectToWhatsApp() {
       const { connection, lastDisconnect, qr } = update;
 
       // ✅ QR tampil manual di terminal/log Railway
-      if (qr) {
+      if (qr && !sessionExists) {
         console.log('\n--- SILAKAN SCAN QR CODE DI BAWAH INI ---');
         qrcodeTerminal.generate(qr, { small: true });
       }
