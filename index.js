@@ -1,4 +1,4 @@
-const { default: makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const express = require('express');
 const qrcodeTerminal = require('qrcode-terminal');
@@ -16,7 +16,9 @@ async function connectToWhatsApp() {
 
     sock = makeWASocket({
       auth: state,
-      browser: ["Ubuntu", "Chrome", "22.04.4"]
+      browser: ["Ubuntu", "Chrome", "22.04.4"],
+      // aktifkan log debug kalau perlu
+      logger: { level: 'info' }
     });
 
     sock.ev.on('connection.update', (update) => {
@@ -24,25 +26,24 @@ async function connectToWhatsApp() {
 
       // ✅ QR tampil manual di terminal
       if (qr) {
-        console.log('--- SILAKAN SCAN QR CODE DI BAWAH INI ---');
+        console.log('\n--- SILAKAN SCAN QR CODE DI BAWAH INI ---');
         qrcodeTerminal.generate(qr, { small: true });
       }
 
       // 🔄 Handle koneksi
       if (connection === 'close') {
-        const shouldReconnect = (lastDisconnect.error = Boom)?.output?.statusCode !== 401;
-        console.log('Koneksi terputus, mencoba menghubungkan ulang...', shouldReconnect);
+        const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
+        console.log('Koneksi terputus, mencoba menghubungkan ulang...');
 
-        if (lastDisconnect.error?.output?.statusCode === 401) {
+        if (reason === DisconnectReason.loggedOut) {
           console.log('Sesi kedaluwarsa atau logout. Menghapus folder sesi lama...');
           if (fs.existsSync('auth_info_baileys')) {
             fs.rmSync('auth_info_baileys', { recursive: true, force: true });
           }
         }
 
-        if (shouldReconnect) {
-          setTimeout(connectToWhatsApp, 3000);
-        }
+        // Reconnect otomatis
+        setTimeout(connectToWhatsApp, 3000);
       } else if (connection === 'open') {
         console.log('✅ WhatsApp Berhasil Terhubung!');
       }
@@ -66,9 +67,9 @@ app.post('/send-message', async (req, res) => {
   }
 
   try {
-    const id = phoneNumber + '@s.whatsapp.net';
+    const id = phoneNumber.replace(/\D/g, '') + '@s.whatsapp.net'; // pastikan format nomor bersih
     await sock.sendMessage(id, { text: message });
-    res.json({ status: true, pesan: 'Pesan berhasil dikirim' });
+    res.json({ status: true, pesan: 'Pesan berhasil dikirim ke ' + phoneNumber });
   } catch (error) {
     res.status(500).json({ status: false, pesan: error.message });
   }
