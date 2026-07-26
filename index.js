@@ -81,7 +81,7 @@ app.post('/send-message', async (req, res) => {
   }
 });
 
-// 🧩 Endpoint status koneksi (opsional)
+// 🧩 Endpoint status koneksi
 app.get('/status', (req, res) => {
   if (!sock) {
     return res.json({ status: false, pesan: 'Belum terhubung ke WhatsApp' });
