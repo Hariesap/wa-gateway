@@ -11,43 +11,46 @@ app.use(express.urlencoded({ extended: true }));
 let sock;
 
 async function connectToWhatsApp() {
-    // Jika ingin mereset total sesi yang error, pastikan folder auth bersih
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
+    try {
+        const { state, saveCreds } = await useMultiFileAuthState('auth_info_baileys');
 
-    sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: false
-    });
+        sock = makeWASocket({
+            auth: state,
+            printQRInTerminal: false,
+            browser: ["Ubuntu", "Chrome", "22.04.4"]
+        });
 
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect, qr } = update;
-        
-        if (qr) {
-            console.log('--- SILAKAN SCAN QR CODE DI BAWAH INI ---');
-            qrcodeTerminal.generate(qr, { small: true });
-        }
-
-        if (connection === 'close') {
-            const shouldReconnect = (lastDisconnect.error = Boom)?.output?.statusCode !== 401;
-            console.log('Koneksi terputus, mencoba menghubungkan ulang...', shouldReconnect);
+        sock.ev.on('connection.update', (update) => {
+            const { connection, lastDisconnect, qr } = update;
             
-            // Jika error 401 (logged out / unauthorized), hapus folder sesi agar generate QR baru
-            if (lastDisconnect.error?.output?.statusCode === 401) {
-                console.log('Sesi kedaluwarsa atau logout. Menghapus folder sesi lama...');
-                if (fs.existsSync('auth_info_baileys')) {
-                    fs.rmSync('auth_info_baileys', { recursive: true, force: true });
+            if (qr) {
+                console.log('--- SILAKAN SCAN QR CODE DI BAWAH INI ---');
+                qrcodeTerminal.generate(qr, { small: true });
+            }
+
+            if (connection === 'close') {
+                const shouldReconnect = (lastDisconnect.error = Boom)?.output?.statusCode !== 401;
+                console.log('Koneksi terputus, mencoba menghubungkan ulang...', shouldReconnect);
+                
+                if (lastDisconnect.error?.output?.statusCode === 401) {
+                    console.log('Sesi kedaluwarsa atau logout. Menghapus folder sesi lama...');
+                    if (fs.existsSync('auth_info_baileys')) {
+                        fs.rmSync('auth_info_baileys', { recursive: true, force: true });
+                    }
                 }
-            }
 
-            if (shouldReconnect) {
-                connectToWhatsApp();
+                if (shouldReconnect) {
+                    setTimeout(connectToWhatsApp, 3000); // Jeda 3 detik sebelum reconnect
+                }
+            } else if (connection === 'open') {
+                console.log('WhatsApp Berhasil Terhubung!');
             }
-        } else if (connection === 'open') {
-            console.log('WhatsApp Berhasil Terhubung!');
-        }
-    });
+        });
 
-    sock.ev.on('creds.update', saveCreds);
+        sock.ev.on('creds.update', saveCreds);
+    } catch (error) {
+        console.log('Error saat inisialisasi WA:', error.message);
+    }
 }
 
 connectToWhatsApp();
