@@ -19,7 +19,6 @@ let sock;
 
 async function connectToWhatsApp() {
   try {
-    // ✅ Gunakan folder sesi di /tmp agar bisa ditulis di Railway
     const sessionPath = '/tmp/auth_info_baileys';
     let sessionExists = fs.existsSync(sessionPath);
 
@@ -53,17 +52,19 @@ async function connectToWhatsApp() {
 
       // ✅ QR tampil manual di terminal/log Railway
       if (qr) {
-        console.log('\n--- SILAKAN SCAN QR CODE DI BAWAH INI ---');
+        console.log('\n🧩 [INFO] Baileys menerima event QR dari server WhatsApp');
+        console.log('--- SILAKAN SCAN QR CODE DI BAWAH INI ---');
         qrcodeTerminal.generate(qr, { small: true });
+        console.log('✅ QR berhasil dibuat dan ditampilkan di log');
       }
 
       // 🔄 Handle koneksi
       if (connection === 'close') {
         const reason = new Boom(lastDisconnect?.error)?.output?.statusCode;
-        console.log('Koneksi terputus, mencoba menghubungkan ulang...');
+        console.log('❌ Koneksi terputus, mencoba menghubungkan ulang...');
 
         if (reason === DisconnectReason.loggedOut) {
-          console.log('Sesi kedaluwarsa atau logout. Menghapus folder sesi lama...');
+          console.log('⚠️ Sesi kedaluwarsa atau logout. Menghapus folder sesi lama...');
           if (fs.existsSync(sessionPath)) {
             fs.rmSync(sessionPath, { recursive: true, force: true });
           }
@@ -75,13 +76,24 @@ async function connectToWhatsApp() {
         console.log('✅ WhatsApp Berhasil Terhubung!');
       } else if (connection === 'connecting') {
         console.log('🔄 Sedang mencoba menghubungkan ke WhatsApp...');
-      } else if (connection === 'close' && !sessionExists) {
-        console.log('⚠️ Tidak ada sesi valid, QR akan dibuat ulang...');
+      }
+    });
+
+    // ✅ Tambahkan listener untuk status login
+    sock.ev.on('connection.update', (update) => {
+      if (update?.connection === undefined && update?.status === 'not logged in') {
+        console.log('⚠️ [INFO] Status: not logged in → Menghapus sesi dan membuat QR baru...');
+        if (fs.existsSync(sessionPath)) {
+          fs.rmSync(sessionPath, { recursive: true, force: true });
+        }
         setTimeout(connectToWhatsApp, 2000);
       }
     });
 
-    sock.ev.on('creds.update', saveCreds);
+    sock.ev.on('creds.update', () => {
+      console.log('💾 [INFO] Menyimpan kredensial sesi...');
+      saveCreds();
+    });
   } catch (error) {
     console.log('❌ Error saat inisialisasi WA:', error.message);
   }
