@@ -18,7 +18,7 @@ const fetch = require('node-fetch');
 
 const app = express();
 // ✅ Aktifkan CORS supaya bisa diakses dari domain CI4
-app.use(cors({ origin: ['https://member2.kesug.com'], methods: ['GET', 'POST'] }));
+app.use(cors({ origin: ['https://member.kesug.com'], methods: ['GET', 'POST'] }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -159,7 +159,7 @@ app.post('/send-message', async (req, res) => {
     await sock.sendMessage(id, { text: message });
 
     // log ke CI4 sebagai terkirim
-    await fetch('https://member2.kesug.com/admin/wa-gateway/saveChat', {
+    await fetch('https://member.kesug.com/admin/wa-gateway/saveChat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -173,7 +173,7 @@ app.post('/send-message', async (req, res) => {
     res.json({ status: true, pesan: 'Pesan berhasil dikirim ke ' + phone });
   } catch (error) {
     // log ke CI4 sebagai gagal
-    await fetch('https://member2.kesug.com/admin/wa-gateway/saveChat', {
+    await fetch('https://member.kesug.com/admin/wa-gateway/saveChat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
