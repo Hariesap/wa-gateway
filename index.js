@@ -1,13 +1,7 @@
 const crypto = require('crypto');
 if (!global.crypto) global.crypto = crypto;
 
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  DisconnectReason,
-  fetchLatestBaileysVersion
-} = require('@whiskeysockets/baileys');
-
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const express = require('express');
 const qrcode = require('qrcode');
@@ -17,6 +11,7 @@ const cors = require('cors');
 const fetch = require('node-fetch');
 
 const app = express();
+
 // ✅ Aktifkan CORS supaya bisa diakses dari domain CI4
 app.use(cors({ origin: ['https://member.kesug.com'], methods: ['GET', 'POST'] }));
 app.use(express.json());
@@ -73,7 +68,6 @@ async function connectToWhatsApp(storeId) {
     });
 
     sock.ev.on('creds.update', saveCreds);
-
   } catch (error) {
     console.log(`[${storeId}] ❌ Error kritis:`, error.message);
     setTimeout(() => connectToWhatsApp(storeId), 5000);
@@ -84,43 +78,38 @@ async function connectToWhatsApp(storeId) {
 app.get('/qr/:storeId', async (req, res) => {
   const storeId = req.params.storeId;
   if (!sockets[storeId]) connectToWhatsApp(storeId);
-
   const session = sessions[storeId] || {};
+
   if (session.connected) {
-    return res.send(`
-      <div style="text-align:center; margin-top:50px; font-family:sans-serif;">
-        <h2 style="color:#28a745;">✅ WhatsApp Terhubung!</h2>
-        <p>Nomor gateway aktif dan siap digunakan untuk mengirim pesan.</p>
-        <p style="color:#555;">Jika ingin mengganti nomor, hapus sesi dan scan QR baru.</p>
-      </div>
-    `);
+    return res.send(`<div style="text-align:center; margin-top:50px; font-family:sans-serif;">
+      <h2 style="color:#28a745;">✅ WhatsApp Terhubung!</h2>
+      <p>Nomor gateway aktif dan siap digunakan untuk mengirim pesan.</p>
+      <p style="color:#555;">Jika ingin mengganti nomor, hapus sesi dan scan QR baru.</p>
+    </div>`);
   }
+
   if (!session.qr) {
-    return res.send(`
-      <div style="text-align:center; margin-top:50px; font-family:sans-serif;">
-        <h3>⏳ QR Code sedang disiapkan...</h3>
-        <p>Silakan refresh halaman ini dalam beberapa detik.</p>
-      </div>
-    `);
+    return res.send(`<div style="text-align:center; margin-top:50px; font-family:sans-serif;">
+      <h3>⏳ QR Code sedang disiapkan...</h3>
+      <p>Silakan refresh halaman ini dalam beberapa detik.</p>
+    </div>`);
   }
+
   try {
     const qrImage = await qrcode.toDataURL(session.qr);
-    res.send(`
-      <div style="text-align:center; margin-top:50px; font-family:sans-serif;">
-        <h2>Scan QR Code WhatsApp Gateway</h2>
-        <p>Gunakan aplikasi WhatsApp di HP Anda untuk scan QR di bawah ini:</p>
-        <img src="${qrImage}" alt="QR Code"
-             style="width:300px; height:300px; border:1px solid #ccc; padding:10px; border-radius:10px;" />
-        <br><br>
-        <script>
-          setInterval(() => {
-            fetch('/status-json/${storeId}').then(res => res.json()).then(data => {
-              if (data.connected) location.reload();
-            });
-          }, 3000);
-        </script>
-      </div>
-    `);
+    res.send(`<div style="text-align:center; margin-top:50px; font-family:sans-serif;">
+      <h2>Scan QR Code WhatsApp Gateway</h2>
+      <p>Gunakan aplikasi WhatsApp di HP Anda untuk scan QR di bawah ini:</p>
+      <img src="${qrImage}" alt="QR Code" style="width:300px; height:300px; border:1px solid #ccc; padding:10px; border-radius:10px;" />
+      <br><br>
+      <script>
+        setInterval(() => {
+          fetch('/status-json/${storeId}').then(res => res.json()).then(data => {
+            if (data.connected) location.reload();
+          });
+        }, 3000);
+      </script>
+    </div>`);
   } catch (err) {
     res.status(500).send('Gagal merender QR Code');
   }
@@ -130,18 +119,14 @@ app.get('/qr/:storeId', async (req, res) => {
 app.get('/status-json/:storeId', (req, res) => {
   const storeId = req.params.storeId;
   const session = sessions[storeId] || {};
-  res.json({
-    connected: !!session.connected,
-    hasQR: !!session.qr,
-    timestamp: new Date().toISOString()
-  });
+  res.json({ connected: !!session.connected, hasQR: !!session.qr, timestamp: new Date().toISOString() });
 });
 
-// 📨 Endpoint Kirim Pesan per store dengan delay & log
+// 📨 Endpoint Kirim Pesan per store dengan delay serial
 app.post('/send-message', async (req, res) => {
-  const { storeId, phone, message } = req.body;
-  if (!storeId || !phone || !message) {
-    return res.status(400).json({ status: false, pesan: 'storeId, phone, message wajib diisi' });
+  const { storeId, phones, message } = req.body; // phones bisa array
+  if (!storeId || !phones || !message) {
+    return res.status(400).json({ status: false, pesan: 'storeId, phones, message wajib diisi' });
   }
 
   const sock = sockets[storeId];
@@ -150,40 +135,25 @@ app.post('/send-message', async (req, res) => {
   }
 
   try {
-    const id = phone.replace(/\D/g, '') + '@s.whatsapp.net';
+    // Loop serial
+    for (const phone of Array.isArray(phones) ? phones : [phones]) {
+      const id = phone.replace(/\D/g, '') + '@s.whatsapp.net';
+      const delay = Math.floor(Math.random() * (10 - 3 + 1) + 3) * 1000;
+      console.log(`[${storeId}] ⏳ Delay ${delay / 1000}s sebelum kirim ke ${phone}`);
+      await new Promise(resolve => setTimeout(resolve, delay));
+      await sock.sendMessage(id, { text: message });
 
-    // ⏳ Delay random 3–10 detik
-    const delay = Math.floor(Math.random() * (10 - 3 + 1) + 3) * 1000;
-    await new Promise(resolve => setTimeout(resolve, delay));
+      // log ke CI4
+      await fetch('https://member.kesug.com/admin/wa-gateway/saveChat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ store_id: storeId, phone_number: phone, message: message, status: 'sent' })
+      });
+      console.log(`[${storeId}] ✅ Pesan terkirim ke ${phone}`);
+    }
 
-    await sock.sendMessage(id, { text: message });
-
-    // log ke CI4 sebagai terkirim
-    await fetch('https://member.kesug.com/admin/wa-gateway/saveChat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        store_id: storeId,
-        phone_number: phone,
-        message: message,
-        status: 'sent'
-      })
-    });
-
-    res.json({ status: true, pesan: 'Pesan berhasil dikirim ke ' + phone });
+    res.json({ status: true, pesan: 'Blast selesai' });
   } catch (error) {
-    // log ke CI4 sebagai gagal
-    await fetch('https://member.kesug.com/admin/wa-gateway/saveChat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        store_id: storeId,
-        phone_number: phone,
-        message: message,
-        status: 'failed'
-      })
-    });
-
     res.status(500).json({ status: false, pesan: error.message });
   }
 });
