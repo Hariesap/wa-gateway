@@ -124,13 +124,13 @@ app.get('/status-json/:storeId', (req, res) => {
 
 // 📨 Endpoint Kirim Pesan per store dengan delay serial
 app.post('/send-message', async (req, res) => {
-  const { store_id, phones, message } = req.body; // gunakan snake_case
-  if (!store_id || !phones || !message) {
-    return res.status(400).json({ status: false, pesan: 'store_id, phones, message wajib diisi' });
+  const { storeId, phones, message } = req.body; // phones bisa array
+  if (!storeId || !phones || !message) {
+    return res.status(400).json({ status: false, pesan: 'storeId, phones, message wajib diisi' });
   }
 
-  const sock = sockets[store_id];
-  if (!sock || !sessions[store_id]?.connected) {
+  const sock = sockets[storeId];
+  if (!sock || !sessions[storeId]?.connected) {
     return res.status(500).json({ status: false, pesan: 'Store belum terhubung' });
   }
 
@@ -139,7 +139,7 @@ app.post('/send-message', async (req, res) => {
     for (const phone of Array.isArray(phones) ? phones : [phones]) {
       const id = phone.replace(/\D/g, '') + '@s.whatsapp.net';
       const delay = Math.floor(Math.random() * (10 - 3 + 1) + 3) * 1000;
-      console.log(`[${store_id}] ⏳ Delay ${delay / 1000}s sebelum kirim ke ${phone}`);
+      console.log(`[${storeId}] ⏳ Delay ${delay / 1000}s sebelum kirim ke ${phone}`);
       await new Promise(resolve => setTimeout(resolve, delay));
       await sock.sendMessage(id, { text: message });
 
@@ -147,14 +147,9 @@ app.post('/send-message', async (req, res) => {
       await fetch('https://member.kesug.com/admin/wa-gateway/saveChat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          store_id: store_id,
-          phone_number: phone,
-          message: message,
-          status: 'sent'
-        })
+        body: JSON.stringify({ store_id: storeId, phone_number: phone, message: message, status: 'sent' })
       });
-      console.log(`[${store_id}] ✅ Pesan terkirim ke ${phone}`);
+      console.log(`[${storeId}] ✅ Pesan terkirim ke ${phone}`);
     }
 
     res.json({ status: true, pesan: 'Blast selesai' });
