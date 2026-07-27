@@ -3,7 +3,7 @@ if (!global.crypto) {
   global.crypto = crypto;
 }
 
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const express = require('express');
 const qrcode = require('qrcode');
@@ -27,12 +27,15 @@ async function connectToWhatsApp() {
     }
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
+    const { version } = await fetchLatestBaileysVersion();
 
     sock = makeWASocket({
+      version,
       auth: state,
-      browser: ["Ubuntu", "Chrome", "22.04.4"],
+      printQRInTerminal: false,
+      browser: ['Chrome (Windows)', 'Desktop', '10.0'],
       logger: P({ level: 'silent' }),
-      printQRInTerminal: false
+      markOnlineOnConnect: true
     });
 
     sock.ev.on('connection.update', async (update) => {
@@ -41,7 +44,7 @@ async function connectToWhatsApp() {
       if (qr) {
         latestQR = qr;
         isConnected = false;
-        console.log('🧩 [INFO] QR Code baru siap, silakan akses endpoint /qr di browser.');
+        console.log('🧩 [INFO] QR Code baru berhasil digenerate.');
       }
 
       if (connection === 'close') {
@@ -51,14 +54,13 @@ async function connectToWhatsApp() {
         const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
         console.log(`❌ Koneksi terputus. Status Code: ${statusCode}`);
 
-        if (statusCode === DisconnectReason.loggedOut) {
-          console.log('⚠️ Sesi logout/expired. Menghapus folder sesi...');
+        if (statusCode === DisconnectReason.loggedOut || statusCode === 405) {
+          console.log('⚠️ Sesi bermasalah/expired/405. Menghapus folder sesi lama...');
           if (fs.existsSync(sessionPath)) {
             fs.rmSync(sessionPath, { recursive: true, force: true });
           }
         }
 
-        // Jeda waktu 5 detik sebelum reconnect agar tidak memicu spam/crash container
         setTimeout(() => {
           connectToWhatsApp();
         }, 5000);
@@ -72,7 +74,7 @@ async function connectToWhatsApp() {
 
     sock.ev.on('creds.update', saveCreds);
   } catch (error) {
-    console.log('❌ Error kritis saat inisialisasi WA:', error.message);
+    console.log('❌ Error kritis:', error.message);
     setTimeout(() => {
       connectToWhatsApp();
     }, 5000);
@@ -81,13 +83,13 @@ async function connectToWhatsApp() {
 
 connectToWhatsApp();
 
-// 🌐 Endpoint untuk menampilkan QR Code di browser
+// 🌐 Endpoint Tampil QR di Browser
 app.get('/qr', async (req, res) => {
   if (isConnected) {
     return res.send('<h3>✅ WhatsApp sudah terhubung dengan sukses!</h3>');
   }
   if (!latestQR) {
-    return res.send('<h3>⏳ QR Code sedang disiapkan, silakan refresh halaman ini dalam beberapa detik...</h3>');
+    return res.send('<h3>⏳ QR Code sedang disiapkan oleh server, silakan refresh halaman ini dalam beberapa detik...</h3>');
   }
 
   try {
@@ -116,7 +118,7 @@ app.get('/status-json', (req, res) => {
   res.json({ connected: isConnected, hasQR: !!latestQR });
 });
 
-// 📨 Endpoint kirim pesan
+// 📨 Endpoint Kirim Pesan
 app.post('/send-message', async (req, res) => {
   const phoneNumber = req.body.phone;
   const message = req.body.message;
