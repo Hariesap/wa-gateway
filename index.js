@@ -15,10 +15,12 @@ const express = require('express');
 const qrcode = require('qrcode');
 const fs = require('fs');
 const P = require('pino');
-const cors = require('cors'); // ✅ Tambahkan CORS
+const cors = require('cors');
 
 const app = express();
-app.use(cors({ origin: ['https://member2.kesug.com'], methods: ['GET', 'POST'] })); // ✅ Izinkan domain CI4
+
+// ✅ Aktifkan CORS supaya bisa diakses dari domain CI4
+app.use(cors({ origin: ['https://member2.kesug.com'], methods: ['GET', 'POST'] }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -91,7 +93,7 @@ app.get('/qr', async (req, res) => {
     return res.send(`
       <div style="text-align:center; margin-top:50px; font-family:sans-serif;">
         <h2 style="color:#28a745;">✅ WhatsApp Terhubung!</h2>
-        <p style="font-size:16px;">Nomor gateway aktif dan siap digunakan untuk mengirim pesan.</p>
+        <p>Nomor gateway aktif dan siap digunakan untuk mengirim pesan.</p>
         <p style="color:#555;">Jika ingin mengganti nomor, hapus sesi dan scan QR baru.</p>
       </div>
     `);
