@@ -3,7 +3,13 @@ if (!global.crypto) {
   global.crypto = crypto;
 }
 
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
+const {
+  default: makeWASocket,
+  useMultiFileAuthState,
+  DisconnectReason,
+  fetchLatestBaileysVersion
+} = require('@whiskeysockets/baileys');
+
 const { Boom } = require('@hapi/boom');
 const express = require('express');
 const qrcode = require('qrcode');
@@ -21,7 +27,6 @@ let isConnected = false;
 async function connectToWhatsApp() {
   try {
     const sessionPath = './auth_info_baileys';
-
     if (!fs.existsSync(sessionPath)) {
       fs.mkdirSync(sessionPath, { recursive: true });
     }
@@ -50,12 +55,11 @@ async function connectToWhatsApp() {
       if (connection === 'close') {
         isConnected = false;
         latestQR = null;
-        
         const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
         console.log(`❌ Koneksi terputus. Status Code: ${statusCode}`);
 
         if (statusCode === DisconnectReason.loggedOut || statusCode === 405) {
-          console.log('⚠️ Sesi bermasalah/expired/405. Menghapus folder sesi lama...');
+          console.log('⚠️ Sesi bermasalah/expired. Menghapus folder sesi lama...');
           if (fs.existsSync(sessionPath)) {
             fs.rmSync(sessionPath, { recursive: true, force: true });
           }
@@ -64,7 +68,6 @@ async function connectToWhatsApp() {
         setTimeout(() => {
           connectToWhatsApp();
         }, 5000);
-
       } else if (connection === 'open') {
         isConnected = true;
         latestQR = null;
@@ -73,6 +76,7 @@ async function connectToWhatsApp() {
     });
 
     sock.ev.on('creds.update', saveCreds);
+
   } catch (error) {
     console.log('❌ Error kritis:', error.message);
     setTimeout(() => {
@@ -89,9 +93,8 @@ app.get('/qr', async (req, res) => {
     return res.send('<h3>✅ WhatsApp sudah terhubung dengan sukses!</h3>');
   }
   if (!latestQR) {
-    return res.send('<h3>⏳ QR Code sedang disiapkan oleh server, silakan refresh halaman ini dalam beberapa detik...</h3>');
+    return res.send('<h3>⏳ QR Code sedang disiapkan, silakan refresh halaman ini...</h3>');
   }
-
   try {
     const qrImage = await qrcode.toDataURL(latestQR);
     res.send(`
@@ -114,6 +117,7 @@ app.get('/qr', async (req, res) => {
   }
 });
 
+// 🌐 Endpoint Status
 app.get('/status-json', (req, res) => {
   res.json({ connected: isConnected, hasQR: !!latestQR });
 });
@@ -122,6 +126,10 @@ app.get('/status-json', (req, res) => {
 app.post('/send-message', async (req, res) => {
   const phoneNumber = req.body.phone;
   const message = req.body.message;
+
+  if (!phoneNumber || !message) {
+    return res.status(400).json({ status: false, pesan: 'Nomor HP dan pesan wajib diisi' });
+  }
 
   if (!sock || !isConnected) {
     return res.status(500).json({ status: false, pesan: 'WhatsApp belum siap atau belum terhubung' });
