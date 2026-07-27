@@ -14,6 +14,7 @@ const qrcode = require('qrcode');
 const fs = require('fs');
 const P = require('pino');
 const cors = require('cors');
+const fetch = require('node-fetch');
 
 const app = express();
 // ✅ Aktifkan CORS supaya bisa diakses dari domain CI4
@@ -136,21 +137,53 @@ app.get('/status-json/:storeId', (req, res) => {
   });
 });
 
-// 📨 Endpoint Kirim Pesan per store
+// 📨 Endpoint Kirim Pesan per store dengan delay & log
 app.post('/send-message', async (req, res) => {
   const { storeId, phone, message } = req.body;
   if (!storeId || !phone || !message) {
     return res.status(400).json({ status: false, pesan: 'storeId, phone, message wajib diisi' });
   }
+
   const sock = sockets[storeId];
   if (!sock || !sessions[storeId]?.connected) {
     return res.status(500).json({ status: false, pesan: 'Store belum terhubung' });
   }
+
   try {
     const id = phone.replace(/\D/g, '') + '@s.whatsapp.net';
+
+    // ⏳ Delay random 3–10 detik
+    const delay = Math.floor(Math.random() * (10 - 3 + 1) + 3) * 1000;
+    await new Promise(resolve => setTimeout(resolve, delay));
+
     await sock.sendMessage(id, { text: message });
+
+    // log ke CI4 sebagai terkirim
+    await fetch('https://member2.kesug.com/admin/wa-gateway/saveChat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        store_id: storeId,
+        phone_number: phone,
+        message: message,
+        status: 'sent'
+      })
+    });
+
     res.json({ status: true, pesan: 'Pesan berhasil dikirim ke ' + phone });
   } catch (error) {
+    // log ke CI4 sebagai gagal
+    await fetch('https://member2.kesug.com/admin/wa-gateway/saveChat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        store_id: storeId,
+        phone_number: phone,
+        message: message,
+        status: 'failed'
+      })
+    });
+
     res.status(500).json({ status: false, pesan: error.message });
   }
 });
