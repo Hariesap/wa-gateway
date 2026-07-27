@@ -1,7 +1,5 @@
 const crypto = require('crypto');
-if (!global.crypto) {
-  global.crypto = crypto;
-}
+if (!global.crypto) global.crypto = crypto;
 
 const {
   default: makeWASocket,
@@ -18,27 +16,24 @@ const P = require('pino');
 const cors = require('cors');
 
 const app = express();
-
 // ✅ Aktifkan CORS supaya bisa diakses dari domain CI4
 app.use(cors({ origin: ['https://member2.kesug.com'], methods: ['GET', 'POST'] }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-let sock;
-let latestQR = null;
-let isConnected = false;
+// simpan socket & status per store
+const sockets = {};
+const sessions = {};
 
-async function connectToWhatsApp() {
+async function connectToWhatsApp(storeId) {
   try {
-    const sessionPath = './auth_info_baileys';
-    if (!fs.existsSync(sessionPath)) {
-      fs.mkdirSync(sessionPath, { recursive: true });
-    }
+    const sessionPath = `./sessions/${storeId}`;
+    if (!fs.existsSync(sessionPath)) fs.mkdirSync(sessionPath, { recursive: true });
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionPath);
     const { version } = await fetchLatestBaileysVersion();
 
-    sock = makeWASocket({
+    const sock = makeWASocket({
       version,
       auth: state,
       printQRInTerminal: false,
@@ -47,49 +42,50 @@ async function connectToWhatsApp() {
       markOnlineOnConnect: true
     });
 
+    sockets[storeId] = sock;
+    sessions[storeId] = { connected: false, qr: null };
+
     sock.ev.on('connection.update', async (update) => {
       const { connection, lastDisconnect, qr } = update;
-
       if (qr) {
-        latestQR = qr;
-        isConnected = false;
-        console.log('🧩 [INFO] QR Code baru berhasil digenerate.');
+        sessions[storeId].qr = qr;
+        sessions[storeId].connected = false;
+        console.log(`[${storeId}] 🧩 QR Code baru berhasil digenerate.`);
       }
-
       if (connection === 'close') {
-        isConnected = false;
-        latestQR = null;
+        sessions[storeId].connected = false;
+        sessions[storeId].qr = null;
         const statusCode = new Boom(lastDisconnect?.error)?.output?.statusCode;
-        console.log(`❌ Koneksi terputus. Status Code: ${statusCode}`);
-
+        console.log(`[${storeId}] ❌ Koneksi terputus. Status Code: ${statusCode}`);
         if (statusCode === DisconnectReason.loggedOut || statusCode === 405) {
-          console.log('⚠️ Sesi bermasalah/expired. Menghapus folder sesi lama...');
+          console.log(`[${storeId}] ⚠️ Sesi bermasalah/expired. Menghapus folder sesi lama...`);
           if (fs.existsSync(sessionPath)) {
             fs.rmSync(sessionPath, { recursive: true, force: true });
           }
         }
-
-        setTimeout(connectToWhatsApp, 5000);
+        setTimeout(() => connectToWhatsApp(storeId), 5000);
       } else if (connection === 'open') {
-        isConnected = true;
-        latestQR = null;
-        console.log('✅ WhatsApp Berhasil Terhubung!');
+        sessions[storeId].connected = true;
+        sessions[storeId].qr = null;
+        console.log(`[${storeId}] ✅ WhatsApp Berhasil Terhubung!`);
       }
     });
 
     sock.ev.on('creds.update', saveCreds);
 
   } catch (error) {
-    console.log('❌ Error kritis:', error.message);
-    setTimeout(connectToWhatsApp, 5000);
+    console.log(`[${storeId}] ❌ Error kritis:`, error.message);
+    setTimeout(() => connectToWhatsApp(storeId), 5000);
   }
 }
 
-connectToWhatsApp();
+// 🌐 Endpoint QR per store
+app.get('/qr/:storeId', async (req, res) => {
+  const storeId = req.params.storeId;
+  if (!sockets[storeId]) connectToWhatsApp(storeId);
 
-// 🌐 Endpoint QR
-app.get('/qr', async (req, res) => {
-  if (isConnected) {
+  const session = sessions[storeId] || {};
+  if (session.connected) {
     return res.send(`
       <div style="text-align:center; margin-top:50px; font-family:sans-serif;">
         <h2 style="color:#28a745;">✅ WhatsApp Terhubung!</h2>
@@ -98,8 +94,7 @@ app.get('/qr', async (req, res) => {
       </div>
     `);
   }
-
-  if (!latestQR) {
+  if (!session.qr) {
     return res.send(`
       <div style="text-align:center; margin-top:50px; font-family:sans-serif;">
         <h3>⏳ QR Code sedang disiapkan...</h3>
@@ -107,9 +102,8 @@ app.get('/qr', async (req, res) => {
       </div>
     `);
   }
-
   try {
-    const qrImage = await qrcode.toDataURL(latestQR);
+    const qrImage = await qrcode.toDataURL(session.qr);
     res.send(`
       <div style="text-align:center; margin-top:50px; font-family:sans-serif;">
         <h2>Scan QR Code WhatsApp Gateway</h2>
@@ -119,7 +113,7 @@ app.get('/qr', async (req, res) => {
         <br><br>
         <script>
           setInterval(() => {
-            fetch('/status-json').then(res => res.json()).then(data => {
+            fetch('/status-json/${storeId}').then(res => res.json()).then(data => {
               if (data.connected) location.reload();
             });
           }, 3000);
@@ -131,32 +125,31 @@ app.get('/qr', async (req, res) => {
   }
 });
 
-// 🌐 Endpoint Status
-app.get('/status-json', (req, res) => {
+// 🌐 Endpoint Status per store
+app.get('/status-json/:storeId', (req, res) => {
+  const storeId = req.params.storeId;
+  const session = sessions[storeId] || {};
   res.json({
-    connected: isConnected,
-    hasQR: !!latestQR,
+    connected: !!session.connected,
+    hasQR: !!session.qr,
     timestamp: new Date().toISOString()
   });
 });
 
-// 📨 Endpoint Kirim Pesan
+// 📨 Endpoint Kirim Pesan per store
 app.post('/send-message', async (req, res) => {
-  const phoneNumber = req.body.phone;
-  const message = req.body.message;
-
-  if (!phoneNumber || !message) {
-    return res.status(400).json({ status: false, pesan: 'Nomor HP dan pesan wajib diisi' });
+  const { storeId, phone, message } = req.body;
+  if (!storeId || !phone || !message) {
+    return res.status(400).json({ status: false, pesan: 'storeId, phone, message wajib diisi' });
   }
-
-  if (!sock || !isConnected) {
-    return res.status(500).json({ status: false, pesan: 'WhatsApp belum siap atau belum terhubung' });
+  const sock = sockets[storeId];
+  if (!sock || !sessions[storeId]?.connected) {
+    return res.status(500).json({ status: false, pesan: 'Store belum terhubung' });
   }
-
   try {
-    const id = phoneNumber.replace(/\D/g, '') + '@s.whatsapp.net';
+    const id = phone.replace(/\D/g, '') + '@s.whatsapp.net';
     await sock.sendMessage(id, { text: message });
-    res.json({ status: true, pesan: 'Pesan berhasil dikirim ke ' + phoneNumber });
+    res.json({ status: true, pesan: 'Pesan berhasil dikirim ke ' + phone });
   } catch (error) {
     res.status(500).json({ status: false, pesan: error.message });
   }
